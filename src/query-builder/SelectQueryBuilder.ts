@@ -34,6 +34,7 @@ import {BroadcasterResult} from "../subscriber/BroadcasterResult";
 import {SelectQueryBuilderOption} from "./SelectQueryBuilderOption";
 import {ObjectUtils} from "../util/ObjectUtils";
 import {DriverUtils} from "../driver/DriverUtils";
+import { WithAttribute } from "./WithAttribute";
 
 /**
  * Allows to build complex sql queries in a fashion way and execute those queries.
@@ -48,7 +49,8 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
      * Gets generated sql query without parameters being replaced.
      */
     getQuery(): string {
-        let sql = this.createSelectExpression();
+        let sql = this.createWithExpression();
+        sql += this.createSelectExpression();
         sql += this.createJoinExpression();
         sql += this.createWhereExpression();
         sql += this.createGroupByExpression();
@@ -566,6 +568,56 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
     leftJoinAndMapOne(mapToProperty: string, entityOrProperty: Function|string|((qb: SelectQueryBuilder<any>) => SelectQueryBuilder<any>), alias: string, condition: string = "", parameters?: ObjectLiteral): this {
         this.addSelect(alias);
         this.join("LEFT", entityOrProperty, alias, condition, parameters, mapToProperty, false);
+        return this;
+    }
+
+    /**
+     * WITHs given query as function.
+     * You also need to specify an alias of the WITH query.
+     * Optionally, you can add parameters used in the query.
+     */
+    with(queryFactory: (qb: SelectQueryBuilder<any>) => SelectQueryBuilder<any>, alias: string, parameters?: ObjectLiteral): this;
+
+    /**
+     * WITHs given query as string.
+     * You also need to specify an alias of the WITH query.
+     * Optionally, you can add parameters used in the query.
+     */
+    with(query: string, alias: string, parameters?: ObjectLiteral): this;
+
+    /**
+     * WITHs given query as string.
+     * You also need to specify an alias of the WITH query.
+     * Optionally, you can add parameters used in the query.
+     */
+    with(query: string|((qb: SelectQueryBuilder<any>) => SelectQueryBuilder<any>), alias: string, parameters?: ObjectLiteral): this {
+        this.withExpression(query, alias, parameters);
+
+        return this;
+    }
+
+    /**
+     * WITHs given query as function.
+     * You also need to specify an alias of the WITH query.
+     * Optionally, you can add parameters used in the query.
+     */
+    withRecursive(queryFactory: (qb: SelectQueryBuilder<any>) => SelectQueryBuilder<any>, alias: string, parameters?: ObjectLiteral): this;
+
+    /**
+     * WITHs given query as string.
+     * You also need to specify an alias of the WITH query.
+     * Optionally, you can add parameters used in the query.
+     */
+    withRecursive(query: string, alias: string, parameters?: ObjectLiteral): this;
+
+    /**
+     * WITHs given query as string.
+     * You also need to specify an alias of the WITH query.
+     * Optionally, you can add parameters used in the query.
+     */
+    withRecursive(query: string|((qb: SelectQueryBuilder<any>) => SelectQueryBuilder<any>), alias: string, parameters?: ObjectLiteral): this {
+        this.withExpression(query, alias, parameters, true);
+
         return this;
     }
 
@@ -1277,6 +1329,35 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
     // Protected Methods
     // -------------------------------------------------------------------------
 
+    protected withExpression(query: Function|string|((qb: SelectQueryBuilder<any>) => SelectQueryBuilder<any>),
+                    aliasName: string,
+                    parameters?: ObjectLiteral,
+                    isRecursive: boolean = false): void {
+        this.setParameters(parameters || {});
+
+        const withAttribute = new WithAttribute();  
+        withAttribute.isRecursive = isRecursive;
+        
+        let subQuery: string = "";
+        if (query instanceof Function) {
+            const subQueryBuilder: SelectQueryBuilder<any> = (query as any)(((this as any) as SelectQueryBuilder<any>).subQuery());
+            this.setParameters(subQueryBuilder.getParameters());
+            subQuery = subQueryBuilder.getQuery();
+        } else {
+            subQuery = query;
+        }
+
+        withAttribute.query = subQuery;
+        withAttribute.alias = this.expressionMap.createAlias({
+            type: "with",
+            name: aliasName,
+            subQuery: subQuery,
+        });
+
+        this.expressionMap.withs.push(withAttribute);
+        this.expressionMap.recursiveWith = this.expressionMap.recursiveWith || isRecursive;
+    }
+
     protected join(direction: "INNER"|"LEFT",
                    entityOrProperty: Function|string|((qb: SelectQueryBuilder<any>) => SelectQueryBuilder<any>),
                    aliasName: string,
@@ -1330,6 +1411,16 @@ export class SelectQueryBuilder<Entity> extends QueryBuilder<Entity> implements 
                 subQuery: isSubQuery === true ? subQuery : undefined,
             });
         }
+    }
+
+    /**
+     * Creates "WITH" part of SQL query
+     */
+    protected createWithExpression() {
+        if (this.expressionMap.withs.length === 0) return "";
+        const withs = this.expressionMap.withs.map(
+            ({ alias, query }) => `${this.escape(alias.name)} AS ${query.substr(0, 1) === "(" ? "" : "("}${query}${query.substr(-1) === ")" ? "" : ")"}`);
+        return `WITH ${this.expressionMap.recursiveWith ? "RECURSIVE " : ""}${withs.join(", ")} `;
     }
 
     /**

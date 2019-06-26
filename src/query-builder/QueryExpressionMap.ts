@@ -11,6 +11,7 @@ import {ColumnMetadata} from "../metadata/ColumnMetadata";
 import {RelationMetadata} from "../metadata/RelationMetadata";
 import {QueryBuilder} from "./QueryBuilder";
 import {SelectQueryBuilderOption} from "./SelectQueryBuilderOption";
+import { WithAttribute } from "./WithAttribute";
 
 /**
  * Contains all properties of the QueryBuilder that needs to be build a final query.
@@ -96,6 +97,16 @@ export class QueryExpressionMap {
      * Relation count queries.
      */
     relationCountAttributes: RelationCountAttribute[] = [];
+
+    /**
+     * WITH queries
+     */
+    withs: WithAttribute[] = [];
+
+    /**
+     * Flag identifing if any WITH query is recursive
+     */
+    recursiveWith: boolean = false;
 
     /**
      * WHERE queries.
@@ -304,7 +315,7 @@ export class QueryExpressionMap {
     /**
      * Creates a new alias and adds it to the current expression map.
      */
-    createAlias(options: { type: "from"|"select"|"join"|"other", name?: string, target?: Function|string, tablePath?: string, subQuery?: string, metadata?: EntityMetadata }): Alias {
+    createAlias(options: { type: "from"|"select"|"join"|"with"|"other", name?: string, target?: Function|string, tablePath?: string, subQuery?: string, metadata?: EntityMetadata }): Alias {
 
         let aliasName = options.name;
         if (!aliasName && options.tablePath)

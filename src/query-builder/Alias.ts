@@ -5,7 +5,7 @@ import { ObjectUtils } from "../util/ObjectUtils";
  */
 export class Alias {
 
-    type: "from"|"select"|"join"|"other"; // todo: make something with "other"
+    type: "from"|"select"|"join"|"with"|"other"; // todo: make something with "other"
 
     name: string;
 
